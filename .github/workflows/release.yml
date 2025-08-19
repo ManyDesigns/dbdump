@@ -51,6 +51,7 @@ jobs:
     # Build the binary and create a compressed archive
     - name: Build
       id: build
+      shell: bash
       env:
         # Set the target operating system and architecture
         GOOS: ${{ matrix.goos }}
