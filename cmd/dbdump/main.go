@@ -11,7 +11,7 @@ import (
 	"manydesigns/dbdump/pkg/dump"
 )
 
-const AppVersion = "0.0.1"
+const AppVersion = "0.0.2"
 
 type dbList []string
 
