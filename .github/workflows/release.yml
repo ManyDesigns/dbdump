@@ -1,0 +1,82 @@
+name: Release
+
+# This workflow is triggered on pushes to the repository that include a tag matching 'v*.*.*'
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    # Job name
+    name: Build and Release
+    # The type of runner that the job will run on, based on the matrix
+    runs-on: ${{ matrix.os }}
+    # A matrix of configurations for each build
+    strategy:
+      matrix:
+        include:
+          # Linux x86_64 build
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          # Windows x86_64 build
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+          # macOS x86_64 build
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          # macOS Arm64 build
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Sets up a Go environment
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    # Synchronize go.mod dependencies
+    - name: Tidy
+      run: go mod tidy
+
+    # Build the binary and create a compressed archive
+    - name: Build
+      id: build
+      env:
+        # Set the target operating system and architecture
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        # Define binary and asset names
+        BINARY_NAME=dbdump
+        ASSET_NAME="dbdump-${{ matrix.goos }}-${{ matrix.goarch }}"
+
+        # Adjust binary name for Windows and build
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          BINARY_NAME+=".exe"
+          go build -ldflags="-s -w" -o ${BINARY_NAME} ./cmd/dbdump
+          # Create a .zip archive for Windows
+          7z a ${ASSET_NAME}.zip ${BINARY_NAME}
+          echo "asset_path=${ASSET_NAME}.zip" >> $GITHUB_ENV
+        else
+          go build -ldflags="-s -w" -o ${BINARY_NAME} ./cmd/dbdump
+          # Create a .tar.gz archive for Linux and macOS
+          tar czvf ${ASSET_NAME}.tar.gz ${BINARY_NAME}
+          echo "asset_path=${ASSET_NAME}.tar.gz" >> $GITHUB_ENV
+        fi
+
+    # Create a GitHub release and upload the build artifact
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        # The files to upload to the release
+        files: ${{ env.asset_path }}
