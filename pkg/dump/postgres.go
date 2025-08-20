@@ -63,10 +63,11 @@ func (p *PostgresDumper) Dump(dbName string, dumpFilename string) error {
 	// `-p` -> database server port number
 	// `-U` -> connect as specified database user
 	// `-d` -> database to dump
+	// `-O` -> prevents `ALTER OWNER` commands in the dump file.
 	// `-f` -> output file or directory name
 	// `-F c` -> output file format (custom, directory, tar, plain text(default)). We are using the custom format here.
 	// `-c` -> clean(drop) database objects before recreating
-	cmd := exec.Command("pg_dump", "-h", p.host, "-p", fmt.Sprintf("%d", p.port), "-U", p.user, "-d", dbName, "-f", dumpFilename, "-F", "c", "-c")
+	cmd := exec.Command("pg_dump", "-h", p.host, "-p", fmt.Sprintf("%d", p.port), "-U", p.user, "-d", dbName, "-f", dumpFilename, "-O", "-F", "c", "-c")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
