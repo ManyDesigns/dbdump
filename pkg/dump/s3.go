@@ -23,11 +23,35 @@ func NewS3Uploader(localDump bool) (*S3Uploader, error) {
 
 		region := os.Getenv("AWS_REGION")
 		if region == "" {
-			return nil, fmt.Errorf("environment variable 'AWS_REGION' is not set")
+			os.Setenv("AWS_REGION", "eu-south-1")
+			bucket = "eu-south-1"
+			fmt.Println("environment variable 'AWS_REGION' is not set. Set it to `eu-south-1`")
 		}
 
 		return &S3Uploader{
 			bucket: bucket,
+			region: region,
+		}, nil
+	} else {
+		return &S3Uploader{}, nil
+	}
+}
+
+func NewS3Downloader(s3Dump bool) (*S3Uploader, error) {
+	if s3Dump {
+		region := os.Getenv("AWS_REGION")
+		if region == "" {
+			os.Setenv("AWS_REGION", "eu-south-1")
+			region = "eu-south-1"
+			fmt.Println("environment variable 'AWS_REGION' is not set. Set it to default 'eu-south-1'")
+			return &S3Uploader{
+				bucket: "",
+				region: "eu-south-1",
+			}, nil
+		}
+
+		return &S3Uploader{
+			bucket: "",
 			region: region,
 		}, nil
 	} else {
@@ -51,7 +75,7 @@ func (s *S3Uploader) Upload(localPath string, remotePath string) (string, error)
 }
 
 func (s *S3Uploader) Download(remotePath string, localPath string) (string, error) {
-	s3Uri := fmt.Sprintf("s3://%s/%s", s.bucket, remotePath)
+	s3Uri := fmt.Sprintf("%s", remotePath)
 	cmd := exec.Command("aws", "s3", "cp", s3Uri, localPath, "--region", s.region)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
