@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -139,9 +140,11 @@ func executeDumpCommand() {
 func executeRestoreCommand() {
 	restoreCmd := flag.NewFlagSet("restore", flag.ExitOnError)
 	// Flags to connect to the DB Server and load the dump file
+	// `dumpFile` here can have two values, if the `s3Dump` flag is true (default) the value is the S3 bucket URI
+	// otherwise is the local system path.
 	var pgHost, pgUser, pgPassword, dbName, dbType, dumpFile string
 	var pgPort, numCPUCores int
-	var localDump bool
+	var s3Dump bool
 
 	restoreCmd.StringVar(&pgHost, "h", "127.0.0.1", "PostgreSQL host")
 
@@ -153,13 +156,13 @@ func executeRestoreCommand() {
 
 	restoreCmd.StringVar(&dbType, "t", "postgres", "The type of database to restore (postgres,mysql,etc...)")
 
-	restoreCmd.StringVar(&dumpFile, "f", "", "The absolute path of the dump file to restore the DB from")
+	restoreCmd.StringVar(&dumpFile, "f", "", "The absolute path of the dump file to restore the DB from or the S3 URI")
 
 	restoreCmd.IntVar(&pgPort, "p", 5432, "PostgreSQL port")
 
 	restoreCmd.IntVar(&numCPUCores, "n", 2, "Number of parallel processes (1 per CPU Core) to use")
 
-	restoreCmd.BoolVar(&localDump, "s", true, "Download the dump from AWS S3")
+	restoreCmd.BoolVar(&s3Dump, "s", true, "Download the dump from AWS S3")
 
 	err := restoreCmd.Parse(os.Args[2:])
 	if err != nil {
@@ -172,6 +175,12 @@ func executeRestoreCommand() {
 		os.Exit(1)
 	}
 
+	downloader, err := dump.NewS3Downloader(s3Dump)
+	if err != nil {
+		fmt.Println("Error initializing S3 downloader:", err)
+		os.Exit(1)
+	}
+
 	var dbrestorer dump.Restorer = dump.NewPostgresRestorer(pgHost, pgPort, numCPUCores, pgUser, pgPassword, dumpFile, dbName)
 
 	var wg sync.WaitGroup
@@ -179,7 +188,7 @@ func executeRestoreCommand() {
 	fmt.Println("\nInitalizing restore process in background...")
 	fmt.Printf("-> Spawning restore task for '%s'.\n", *&dbName)
 	wg.Add(1)
-	go processDatabaseRestore(&wg, *&dbName, dbrestorer, *&dumpFile)
+	go processDatabaseRestore(&wg, *&dbName, dbrestorer, dumpFile, s3Dump, downloader)
 	fmt.Println("\nAll restore processes have been started. Waiting for them to complete.")
 	wg.Wait()
 	fmt.Println("Check the 'restore_log_*.log' file for progress and results.")
@@ -187,7 +196,7 @@ func executeRestoreCommand() {
 
 // processDatabaseRestore is used to restore a DB using the dump file passed as parameter.
 // It can also take the number of processes to execute in parallel based on the number of available CPUs core
-func processDatabaseRestore(wg *sync.WaitGroup, dbName string, dbrestorer dump.Restorer, dumpFileName string) {
+func processDatabaseRestore(wg *sync.WaitGroup, dbName string, dbrestorer dump.Restorer, dumpFileName string, s3Download bool, downloader dump.Downloader) {
 	defer wg.Done()
 
 	logFilename := fmt.Sprintf("restore_log_%s_%s.log", dbName, time.Now().UTC().Format("20060102_150405"))
@@ -207,7 +216,26 @@ func processDatabaseRestore(wg *sync.WaitGroup, dbName string, dbrestorer dump.R
 	logger := log.New(logFile, "", log.LstdFlags)
 	logger.Printf("Starting restore process for '%s' using '%s' dump...", dbName, dumpFileName)
 
-	logger.Println("1. Restoring database...")
+	// We need to manage the restore based on the remote S3 bucket or the local file path
+	var local_dump_file string
+	if s3Download {
+		local_dump_file = filepath.Base(dumpFileName)
+		logger.Println(" Downloading dump from S3...")
+		s3Uri, err := downloader.Download(dumpFileName, local_dump_file)
+		if err != nil {
+			logger.Printf("Error downloading dump from S3: %v", err)
+			return
+		}
+		logger.Println("Download successful.")
+		logger.Printf("File downloaded to: %s", s3Uri)
+	}
+
+	logger.Println("Restoring database...")
+	if s3Download {
+		dumpFileName = local_dump_file
+	} else {
+		dumpFileName = *&dumpFileName
+	}
 	if err := dbrestorer.Restore(dbName, dumpFileName); err != nil {
 		logger.Printf("Error during restoring the DB '%s': %v", dbName, err)
 		return
