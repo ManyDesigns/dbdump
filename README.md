@@ -24,6 +24,16 @@ The third goal, is to execute the dump once and have it at disposal for others i
 
 ## Download the tool and install on your local machine or the remote server
 
+For **Mac OSX** and **Linux/Unix** users the simplest method is to execute:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/manydesigns/dbdump/main/install.sh | bash
+```
+
+It will download and extract the tool under `/usr/local/bin` path.
+
+For **Windows users**:
+
 Go on the release page of the repository: https://github.com/ManyDesigns/dbdump/releases and select the correct architecture
 for your Operating System.
 
